@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { translations } from "../lib/translations";
-import { useLanguage } from "../contexts/LanguageContext";
+import { useLanguage } from "../app/layout";
 
 export function useTranslations() {
   const { lang } = useLanguage();

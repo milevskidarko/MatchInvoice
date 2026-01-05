@@ -1,3 +1,4 @@
+import "../globals.css";
 "use client";
 import { useState, useEffect } from "react";
 import { useTranslations } from "../../lib/useTranslations";

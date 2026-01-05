@@ -1,37 +1,36 @@
 "use client";
-import { useLanguage } from "../contexts/LanguageContext";
+import { useLanguage } from "./layout";
 import { useTranslations } from "../lib/useTranslations";
+import "./globals.css";
 
 export default function Home() {
   const { lang, setLang } = useLanguage();
   const t = useTranslations();
-
+  console.log({ lang });
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
       <main className="flex flex-col items-center gap-8 p-8 bg-white rounded shadow">
         <div className="flex flex-col items-center gap-4 w-full">
           <h1 className="text-4xl font-bold mb-2">InvoiceGuard</h1>
-          
+
           {/* Language Selection */}
           <div className="flex gap-2 mb-4">
             <button
               type="button"
-              className={`px-4 py-2 rounded font-medium transition ${
-                lang === "mk"
-                  ? "bg-blue-600 text-white"
-                  : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300"
-              }`}
+              className={`px-4 py-2 rounded font-medium transition ${lang === "mk"
+                ? "bg-blue-600 text-white"
+                : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300"
+                }`}
               onClick={() => setLang("mk")}
             >
               Македонски
             </button>
             <button
               type="button"
-              className={`px-4 py-2 rounded font-medium transition ${
-                lang === "en"
-                  ? "bg-blue-600 text-white"
-                  : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300"
-              }`}
+              className={`px-4 py-2 rounded font-medium transition ${lang === "en"
+                ? "bg-blue-600 text-white"
+                : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300"
+                }`}
               onClick={() => setLang("en")}
             >
               English
@@ -42,7 +41,7 @@ export default function Home() {
             {t("welcome")}
           </p>
         </div>
-        
+
         <nav className="flex flex-col gap-4 w-full">
           <a href="/dashboard" className="px-6 py-3 rounded bg-blue-600 text-white text-center font-semibold hover:bg-blue-700 transition">
             {t("dashboard")}

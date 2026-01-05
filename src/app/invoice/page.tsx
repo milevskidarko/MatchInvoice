@@ -1,9 +1,10 @@
+
 "use client";
 import { useState } from "react";
 import { useTranslations } from "../../lib/useTranslations";
 import { FileUpload } from "../../components/FileUpload";
 import { ExtractedInvoiceData } from "../../lib/ocr";
-
+import "../globals.css";
 export default function InvoiceForm() {
   const t = useTranslations();
   const [invoice, setInvoice] = useState({
@@ -13,7 +14,8 @@ export default function InvoiceForm() {
     supplier: "",
     currency: "MKD",
   });
-  const [items, setItems] = useState([{ name: "", qty: 1, unitPrice: 0, vat: 18 }]);
+  type Item = { name: string; qty: number; unitPrice: number; vat: number };
+  const [items, setItems] = useState<Item[]>([{ name: "", qty: 1, unitPrice: 0, vat: 18 }]);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +27,12 @@ export default function InvoiceForm() {
   };
   const handleItemChange = (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const newItems = [...items];
-    newItems[idx][e.target.name] = e.target.type === "number" ? Number(e.target.value) : e.target.value;
+    const key = e.target.name as keyof Item;
+    if (key === "qty" || key === "unitPrice" || key === "vat") {
+      newItems[idx][key] = Number(e.target.value) as Item[typeof key];
+    } else if (key === "name") {
+      newItems[idx][key] = e.target.value as Item[typeof key];
+    }
     setItems(newItems);
   };
   const addItem = () => setItems([...items, { name: "", qty: 1, unitPrice: 0, vat: 18 }]);
@@ -84,6 +91,7 @@ export default function InvoiceForm() {
       } else {
         setError(data.error || t("invoiceError"));
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       setError(err.message || t("invoiceError"));
     } finally {
