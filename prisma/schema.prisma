@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model DocumentFile {
+  id          String   @id @default(uuid())
+  documentId  String
+  fileName    String
+  fileType    String
+  storagePath String
+  uploadedAt  DateTime @default(now())
+  document    Document @relation(fields: [documentId], references: [id])
+}
+
+model User {
+  id        String     @id @default(uuid())
+  email     String     @unique
+  password  String
+  createdAt DateTime   @default(now())
+  documents Document[]
+}
+
+model Document {
+  id           String         @id @default(uuid())
+  type         DocumentType
+  userId       String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  user         User           @relation(fields: [userId], references: [id])
+  files        DocumentFile[]
+  items        DocumentItem[]
+  invoicePairs DocumentPair[] @relation("InvoiceDocument")
+  orderPairs   DocumentPair[] @relation("OrderDocument")
+}
+
+model DocumentItem {
+  id         String   @id @default(uuid())
+  documentId String
+  name       String
+  qty        Float
+  unitPrice  Float
+  vatPercent Float
+  document   Document @relation(fields: [documentId], references: [id])
+}
+
+model DocumentPair {
+  id          String             @id @default(uuid())
+  orderId     String
+  invoiceId   String
+  createdAt   DateTime           @default(now())
+  invoice     Document           @relation("InvoiceDocument", fields: [invoiceId], references: [id])
+  order       Document           @relation("OrderDocument", fields: [orderId], references: [id])
+  validations ValidationResult[]
+  summary     ValidationSummary?
+}
+
+model ValidationResult {
+  id       String       @id @default(uuid())
+  pairId   String
+  category String
+  message  String
+  severity String
+  pair     DocumentPair @relation(fields: [pairId], references: [id])
+}
+
+model ValidationSummary {
+  id           String       @id @default(uuid())
+  pairId       String       @unique
+  itemsStatus  String
+  vatStatus    String
+  datesStatus  String
+  totalsStatus String
+  finalStatus  String
+  pair         DocumentPair @relation(fields: [pairId], references: [id])
+}
+
+enum DocumentType {
+  ORDER
+  INVOICE
+}
