@@ -72,8 +72,16 @@ export function parseInvoiceData(text: string): ExtractedInvoiceData {
     text.length
   );
 
-  /* Extract invoice number - look for pattern XXX/YYYY */
-  const invoiceNumMatch = text.match(/(\d{1,3}\/\d{4})/);
+  // Detect language: check for Cyrillic characters
+  const isCyrillic = /[а-яА-ЯѐёЀЁ]/.test(text);
+  const language = isCyrillic ? "mk" : "en";
+  console.log("[DEBUG] Detected language:", language);
+
+  /* Extract invoice number - look for pattern XXX/YYYY or Invoice # */
+  let invoiceNumMatch = text.match(/(\d{1,3}\/\d{4})/);
+  if (!invoiceNumMatch && language === "en") {
+    invoiceNumMatch = text.match(/Invoice\s+#?(\d+)/i) as RegExpMatchArray | null;
+  }
   if (invoiceNumMatch) {
     result.invoiceNumber = invoiceNumMatch[1];
     console.log("[DEBUG] Invoice number found:", result.invoiceNumber);
@@ -81,10 +89,17 @@ export function parseInvoiceData(text: string): ExtractedInvoiceData {
     console.log("[DEBUG] Invoice number NOT found");
   }
 
-  /* Extract dates - format DD.MM.YYYY */
-  const dateMatches = Array.from(
-    text.matchAll(/(\d{1,2})\.(\d{1,2})\.(\d{4})/g)
-  );
+  /* Extract dates - format DD.MM.YYYY or MM/DD/YYYY */
+  let dateMatches;
+  if (language === "mk") {
+    dateMatches = Array.from(
+      text.matchAll(/(\d{1,2})\.(\d{1,2})\.(\d{4})/g)
+    );
+  } else {
+    dateMatches = Array.from(
+      text.matchAll(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/g)
+    );
+  }
   console.log("[DEBUG] Date matches found:", dateMatches.length);
 
   if (dateMatches.length > 0) {
@@ -145,20 +160,22 @@ export function parseInvoiceData(text: string): ExtractedInvoiceData {
     console.log("[DEBUG] No supplier found");
   }
 
-  /* Extract items from table rows */
   const items: ExtractedInvoiceData["items"] = [];
 
-  // Find rows that start with "01", "02", etc. (row numbers)
-  // Pattern: "01 Производ 1 2 100,00 ден 200,00 ден"
-  // Better pattern: capture row, name, qty (before last 2 numbers), price, total
+
   for (const line of lines) {
     // Skip header and non-item lines
-    if (line.match(/ОПИС|КОЛ|ЦЕНА|ИЗНОС|ден\s*$|^(Основа|ДДВ|За плаќање)/i))
-      continue;
-
-    // Match: row_num at start, then product name, then numbers at end
-    // Format: "01 Производ 1 2 100,00 ден 200,00 ден"
-    // Strategy: Split by "ден", extract numbers to get qty and unitPrice
+    let isHeader = false;
+    if (language === "mk") {
+      isHeader = /ОПИС|КОЛ|ЦЕНА|ИЗНОС|ден\s*$|^(Основа|ДДВ|За плаќање)/i.test(
+        line
+      );
+    } else {
+      isHeader = /item|description|quantity|unit|price|total|amount|subtotal|due/i.test(
+        line
+      );
+    }
+    if (isHeader) continue;
     const denParts = line.split(/\s+ден/i);
     if (denParts.length >= 2) {
       // First part: "01 Производ 1 2 100,00"
@@ -199,8 +216,6 @@ export function parseInvoiceData(text: string): ExtractedInvoiceData {
       }
     }
 
-    // If no items found in tableLines, try ALL lines (for different table formats)
-    // (You can add more parsing logic here for other formats if needed)
   }
 
   result.items = items;
