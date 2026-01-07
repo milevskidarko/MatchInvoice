@@ -42,7 +42,14 @@ export async function extractInvoiceData(
   if (file.type.startsWith("image/")) {
     const text = await extractTextFromImage(file, onProgress);
     console.log("[OCR RAW TEXT]", text);
-    return parseInvoiceData(text);
+    try {
+      const result = parseInvoiceData(text);
+      console.log("[OCR PARSED RESULT]", result);
+      return result;
+    } catch (error) {
+      console.error("[OCR PARSE ERROR]", error);
+      throw error;
+    }
   }
 
   if (file.type === "application/pdf") {
@@ -60,102 +67,150 @@ export async function extractInvoiceData(
 export function parseInvoiceData(text: string): ExtractedInvoiceData {
   const result: ExtractedInvoiceData = {};
 
-  const lines = text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-  /* ---------------- Invoice number ---------------- */
-  const invoiceNumberPatterns = [
-    /(?:invoice|faktura|фактура)[\s#:]*([A-Z0-9\-\/]+)/i,
-    /(?:broj|број|number)[\s:]*([A-Z0-9\-\/]+)/i,
-    /#\s*([A-Z0-9\-\/]+)/i,
-  ];
-
-  for (const p of invoiceNumberPatterns) {
-    const m = text.match(p);
-    if (m?.[1]) {
-      result.invoiceNumber = m[1];
-      break;
-    }
-  }
-
-  /* ---------------- Dates ---------------- */
-  const dateMatches = Array.from(
-    text.matchAll(/(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4}|\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2})/g)
-  ).map((m) => m[1]);
-
-  if (dateMatches.length > 0) {
-    result.invoiceDate = normalizeDate(dateMatches[0]);
-    if (dateMatches[1]) {
-      result.dueDate = normalizeDate(dateMatches[1]);
-    }
-  }
-
-  /* ---------------- Supplier ---------------- */
-  const firstLines = lines.slice(0, 5).join(" ");
-  const supplierMatch = firstLines.match(
-    /(?:supplier|dodavuvac|добавувач|from|од)[\s:]*([A-ZА-Я][A-ZА-Яa-zа-я\s&]+)/i
+  console.log(
+    "[DEBUG] Starting parseInvoiceData with text length:",
+    text.length
   );
 
-  if (supplierMatch?.[1]) {
-    result.supplier = supplierMatch[1].trim();
-  } else if (lines[0] && !/^\d/.test(lines[0])) {
-    result.supplier = lines[0];
+  /* Extract invoice number - look for pattern XXX/YYYY */
+  const invoiceNumMatch = text.match(/(\d{1,3}\/\d{4})/);
+  if (invoiceNumMatch) {
+    result.invoiceNumber = invoiceNumMatch[1];
+    console.log("[DEBUG] Invoice number found:", result.invoiceNumber);
+  } else {
+    console.log("[DEBUG] Invoice number NOT found");
   }
 
-  /* ---------------- Currency ---------------- */
-  const currencyMatch = text.match(/(MKD|EUR|USD|GBP|ден|денар|euro|dollar)/i);
+  /* Extract dates - format DD.MM.YYYY */
+  const dateMatches = Array.from(
+    text.matchAll(/(\d{1,2})\.(\d{1,2})\.(\d{4})/g)
+  );
+  console.log("[DEBUG] Date matches found:", dateMatches.length);
+
+  if (dateMatches.length > 0) {
+    result.invoiceDate = normalizeDate(dateMatches[0][0]);
+    console.log("[DEBUG] Invoice date parsed:", result.invoiceDate);
+
+    if (dateMatches.length > 1) {
+      result.dueDate = normalizeDate(dateMatches[1][0]);
+      console.log("[DEBUG] Due date parsed:", result.dueDate);
+    }
+  }
+
+  /* Extract currency */
+  const currencyMatch = text.match(/(MKD|EUR|USD|GBP|ден|денар)/i);
   if (currencyMatch) {
     const c = currencyMatch[1].toUpperCase();
     if (c.includes("MKD") || c.includes("ДЕН")) result.currency = "MKD";
     else if (c.includes("EUR")) result.currency = "EUR";
     else if (c.includes("USD")) result.currency = "USD";
     else if (c.includes("GBP")) result.currency = "GBP";
+    console.log("[DEBUG] Currency set:", result.currency);
   }
 
-  /* ---------------- Global VAT ---------------- */
-  let globalVat: number | undefined;
+  /* Extract supplier - from "до:" section, skip all placeholder/number lines */
+  const supplierLines: string[] = [];
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l);
+
+  let inSupplierSection = false;
   for (const line of lines) {
-    const m = line.match(/ДДВ\s*([0-9]{1,2}(?:[.,][0-9]+)?)%/i);
-    if (m?.[1]) {
-      globalVat = parseFloat(m[1].replace(",", "."));
-      break;
+    if (/^до:/i.test(line)) {
+      inSupplierSection = true;
+      continue;
     }
-  }
-
-  /* ---------------- Items ---------------- */
-  const items: ExtractedInvoiceData["items"] = [];
-
-  for (const line of lines) {
-    if (/вкупно|total|subtotal|sum|итог|наплата|за\s+плаќање/i.test(line)) continue;
-
-    const nums = Array.from(
-      line.matchAll(/([\d\.]+,[\d]{2}|\d+)/g)
-    ).map((m) => parseFloat(m[1].replace(/\./g, "").replace(",", ".")));
-
-    if (nums.length >= 2) {
-      const qty = Number.isInteger(nums[0]) ? nums[0] : 1;
-      const unitPrice = nums.find((n) => !Number.isInteger(n)) ?? 0;
-
-      const name = line
-        .replace(/[0-9.,]+/g, "")
-        .replace(/\s+/g, " ")
-        .trim();
-
-      if (name && unitPrice > 0) {
-        items.push({
-          name,
-          qty,
-          unitPrice,
-          vat: globalVat ?? 18,
-        });
+    if (inSupplierSection) {
+      if (/ФАКТУРИРАЛ|ОПИС|Бр\./i.test(line)) {
+        break; // End of supplier section
+      }
+      // Add line if it's not a placeholder or pure numbers
+      if (
+        line.length > 2 &&
+        !/^(назив\s+на\s+фирма|име|адреса|град|name|address|city)$/i.test(
+          line
+        ) &&
+        !/^\d+(\s+\d+)*$/.test(line)
+      ) {
+        supplierLines.push(line);
       }
     }
   }
 
-  if (items.length) result.items = items.slice(0, 20);
+  if (supplierLines.length > 0) {
+    result.supplier = supplierLines.join(" ");
+    console.log("[DEBUG] Supplier found:", result.supplier);
+  } else {
+    console.log("[DEBUG] No supplier found");
+  }
 
+  /* Extract items from table rows */
+  const items: ExtractedInvoiceData["items"] = [];
+
+  // Find rows that start with "01", "02", etc. (row numbers)
+  // Pattern: "01 Производ 1 2 100,00 ден 200,00 ден"
+  // Better pattern: capture row, name, qty (before last 2 numbers), price, total
+  for (const line of lines) {
+    // Skip header and non-item lines
+    if (line.match(/ОПИС|КОЛ|ЦЕНА|ИЗНОС|ден\s*$|^(Основа|ДДВ|За плаќање)/i))
+      continue;
+
+    // Match: row_num at start, then product name, then numbers at end
+    // Format: "01 Производ 1 2 100,00 ден 200,00 ден"
+    // Strategy: Split by "ден", extract numbers to get qty and unitPrice
+    const denParts = line.split(/\s+ден/i);
+    if (denParts.length >= 2) {
+      // First part: "01 Производ 1 2 100,00"
+      // Need to extract: row(01) name(Производ 1) qty(2) price(100,00)
+      // Key: last two numbers are qty and price, everything in between is name
+      const firstPart = denParts[0].trim();
+      const numbers: Array<{ idx: number; val: string }> = [];
+      const parts = firstPart.split(/\s+/);
+      
+      // Find all numeric parts with their indices
+      for (let i = 0; i < parts.length; i++) {
+        if (parts[i].match(/^[\d.,]+$/)) {
+          numbers.push({ idx: i, val: parts[i] });
+        }
+      }
+      
+      // Should have at least 3 numbers: row, qty, price
+      if (numbers.length >= 3) {
+        const qty = parseInt(numbers[numbers.length - 2].val, 10);
+        // Remove dots (thousands separator) and convert comma to decimal point
+        const price = parseFloat(numbers[numbers.length - 1].val.replace(/\./g, "").replace(",", "."));
+        
+        // Extract name: from after row number to before qty
+        const nameStart = numbers[0].idx + 1;
+        const nameEnd = numbers[numbers.length - 2].idx;
+        const name = parts.slice(nameStart, nameEnd).join(" ").trim();
+        
+        console.log(`[DEBUG] Item: name="${name}", qty=${qty}, price=${price}`);
+        
+        if (name && name.length > 2 && qty > 0 && price > 0) {
+          items.push({
+            name,
+            qty,
+            unitPrice: price,
+            vat: 18,
+          });
+        }
+      }
+    }
+
+    // If no items found in tableLines, try ALL lines (for different table formats)
+    // (You can add more parsing logic here for other formats if needed)
+  }
+
+  result.items = items;
+  if (items.length > 0) {
+    console.log("[DEBUG] Total items extracted:", items.length);
+  } else {
+    console.log("[DEBUG] No items extracted");
+  }
+
+  console.log("[DEBUG] Final result:", result);
   return result;
 }
 

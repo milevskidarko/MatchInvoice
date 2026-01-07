@@ -1,13 +1,13 @@
 "use client";
 import { useRef, useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import { extractInvoiceData, ExtractedInvoiceData } from "../lib/ocr.smart";
+import { ExtractedInvoiceData } from "../lib/ocr.smart";
 
-export function FileUpload({ 
-  onUpload, 
-  onOCRData, 
-  accept = ".pdf,.jpg,.jpeg,.png" 
-}: { 
+export function FileUpload({
+  onUpload,
+  onOCRData,
+  accept = ".jpg,.jpeg,.png"
+}: {
   onUpload: (file: { name: string, type: string, path: string }) => void;
   onOCRData?: (data: ExtractedInvoiceData) => void;
   accept?: string;

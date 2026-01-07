@@ -1,9 +1,7 @@
 "use client";
 import "../globals.css";
-
 import { useState } from "react";
 import { useTranslations } from "../../lib/useTranslations";
-import { FileUpload } from "../../components/FileUpload";
 
 export default function OrderForm() {
     const t = useTranslations();
@@ -73,31 +71,6 @@ export default function OrderForm() {
         }
     };
 
-    // Handler for OCR data
-    const handleOCRData = (data: any) => {
-        if (data) {
-            // Fill order fields if present
-            setOrder((prev) => ({
-                ...prev,
-                orderNumber: data.invoiceNumber || prev.orderNumber,
-                orderDate: data.invoiceDate || prev.orderDate,
-                supplier: data.supplier || prev.supplier,
-                currency: data.currency || prev.currency,
-            }));
-            // Fill items if present
-            if (data.items && Array.isArray(data.items) && data.items.length > 0) {
-                setItems(
-                    data.items.map((item: any) => ({
-                        name: item.name || "",
-                        qty: item.qty || 1,
-                        unitPrice: item.unitPrice || 0,
-                        vat: item.vat || 18,
-                    }))
-                );
-            }
-        }
-    };
-
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
             <h1 className="text-3xl font-bold mb-6">{t("title")}</h1>
@@ -106,15 +79,6 @@ export default function OrderForm() {
                 onSubmit={handleSubmit}
                 className="flex flex-col gap-4 w-full max-w-xl bg-white p-8 rounded shadow"
             >
-                <div>
-                    <label className="mb-1 font-medium block">{t("addFile") || "Attach PDF/Image"}</label>
-                    <FileUpload onUpload={file => setFiles(f => [...f, file])} onOCRData={handleOCRData} />
-                    <div className="flex flex-col gap-1 mt-2">
-                        {files.map((f, i) => (
-                            <span key={i} className="text-sm text-zinc-700">{f.name}</span>
-                        ))}
-                    </div>
-                </div>
                 {success && <div className="p-2 mb-2 bg-green-100 text-green-800 rounded">{success}</div>}
                 {error && <div className="p-2 mb-2 bg-red-100 text-red-800 rounded">{error}</div>}
 

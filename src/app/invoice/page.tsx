@@ -51,20 +51,32 @@ export default function InvoiceForm() {
   const handleOCRData = (data: ExtractedInvoiceData) => {
     setOcrExtracted(true);
     console.log('[OCR] Raw Extracted Data:', data);
+    console.log('[OCR] Invoice Number:', data.invoiceNumber);
+    console.log('[OCR] Invoice Date:', data.invoiceDate);
+    console.log('[OCR] Due Date:', data.dueDate);
+    console.log('[OCR] Supplier:', data.supplier);
+    console.log('[OCR] Currency:', data.currency);
+    console.log('[OCR] Items count:', data.items?.length || 0);
+    
     // Fill invoice fields
     if (data.invoiceNumber) {
+      console.log('[OCR] Setting invoiceNumber:', data.invoiceNumber);
       setInvoice(prev => ({ ...prev, invoiceNumber: data.invoiceNumber! }));
     }
     if (data.invoiceDate) {
+      console.log('[OCR] Setting invoiceDate:', data.invoiceDate);
       setInvoice(prev => ({ ...prev, invoiceDate: data.invoiceDate! }));
     }
     if (data.dueDate) {
+      console.log('[OCR] Setting dueDate:', data.dueDate);
       setInvoice(prev => ({ ...prev, dueDate: data.dueDate! }));
     }
     if (data.supplier) {
+      console.log('[OCR] Setting supplier:', data.supplier);
       setInvoice(prev => ({ ...prev, supplier: data.supplier! }));
     }
     if (data.currency) {
+      console.log('[OCR] Setting currency:', data.currency);
       setInvoice(prev => ({ ...prev, currency: data.currency! }));
     }
     // Fill items (clean numbers)
@@ -75,11 +87,13 @@ export default function InvoiceForm() {
         unitPrice: cleanNumber(item.unitPrice),
         vat: cleanNumber(item.vat),
       }));
-      console.log('[OCR] Items before mapping to form:', cleanedItems);
+      console.log('[OCR] Cleaned items:', cleanedItems);
       setItems(cleanedItems);
       setTimeout(() => {
-        console.log('[OCR] Items in form after setItems:', cleanedItems);
+        console.log('[OCR] Items set in state');
       }, 100);
+    } else {
+      console.log('[OCR] No items to set');
     }
     // Show success message
     setTimeout(() => {
