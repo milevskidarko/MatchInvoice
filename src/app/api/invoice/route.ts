@@ -28,7 +28,6 @@ export async function POST(request: Request) {
               })),
             }
           : undefined,
-        // Optionally store invoiceNumber, invoiceDate, dueDate, supplier, currency as custom fields or in a JSON column
       },
       include: { items: true, files: true },
     });

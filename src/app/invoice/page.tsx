@@ -3,8 +3,15 @@
 import { useState } from "react";
 import { useTranslations } from "../../lib/useTranslations";
 import { FileUpload } from "../../components/FileUpload";
-import { ExtractedInvoiceData } from "../../lib/ocr";
+import { ExtractedInvoiceData } from "../../lib/ocr.new";
 import "../globals.css";
+
+function cleanNumber(value: string | number) {
+  if (typeof value === 'string') {
+    return Number(value.replace(',', '.').replace(/[^0-9.]/g, ''));
+  }
+  return value;
+}
 export default function InvoiceForm() {
   const t = useTranslations();
   const [invoice, setInvoice] = useState({
@@ -43,7 +50,7 @@ export default function InvoiceForm() {
 
   const handleOCRData = (data: ExtractedInvoiceData) => {
     setOcrExtracted(true);
-    
+    console.log('[OCR] Raw Extracted Data:', data);
     // Fill invoice fields
     if (data.invoiceNumber) {
       setInvoice(prev => ({ ...prev, invoiceNumber: data.invoiceNumber! }));
@@ -60,12 +67,20 @@ export default function InvoiceForm() {
     if (data.currency) {
       setInvoice(prev => ({ ...prev, currency: data.currency! }));
     }
-    
-    // Fill items
+    // Fill items (clean numbers)
     if (data.items && data.items.length > 0) {
-      setItems(data.items);
+      const cleanedItems = data.items.map(item => ({
+        ...item,
+        qty: cleanNumber(item.qty),
+        unitPrice: cleanNumber(item.unitPrice),
+        vat: cleanNumber(item.vat),
+      }));
+      console.log('[OCR] Items before mapping to form:', cleanedItems);
+      setItems(cleanedItems);
+      setTimeout(() => {
+        console.log('[OCR] Items in form after setItems:', cleanedItems);
+      }, 100);
     }
-    
     // Show success message
     setTimeout(() => {
       setOcrExtracted(false);
@@ -91,7 +106,7 @@ export default function InvoiceForm() {
       } else {
         setError(data.error || t("invoiceError"));
       }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       setError(err.message || t("invoiceError"));
     } finally {
@@ -108,8 +123,8 @@ export default function InvoiceForm() {
           <p className="text-xs text-zinc-500 mb-2">
             {t("ocrHint")}
           </p>
-          <FileUpload 
-            onUpload={file => setFiles(f => [...f, file])} 
+          <FileUpload
+            onUpload={file => setFiles(f => [...f, file])}
             onOCRData={handleOCRData}
           />
           <div className="flex flex-col gap-1 mt-2">
@@ -163,25 +178,28 @@ export default function InvoiceForm() {
               </tr>
             </thead>
             <tbody>
-              {items.map((item, idx) => (
-                <tr key={idx}>
-                  <td className="p-2 border">
-                    <input type="text" name="name" value={item.name} onChange={e => handleItemChange(idx, e)} className="border rounded px-2 py-1 w-full" required />
-                  </td>
-                  <td className="p-2 border">
-                    <input type="number" name="qty" value={item.qty} min={1} onChange={e => handleItemChange(idx, e)} className="border rounded px-2 py-1 w-20" required />
-                  </td>
-                  <td className="p-2 border">
-                    <input type="number" name="unitPrice" value={item.unitPrice} min={0} step={0.01} onChange={e => handleItemChange(idx, e)} className="border rounded px-2 py-1 w-24" required />
-                  </td>
-                  <td className="p-2 border">
-                    <input type="number" name="vat" value={item.vat} min={0} max={100} step={0.01} onChange={e => handleItemChange(idx, e)} className="border rounded px-2 py-1 w-20" required />
-                  </td>
-                  <td className="p-2 border text-center">
-                    <button type="button" onClick={() => removeItem(idx)} className="text-red-600 hover:underline disabled:opacity-50" disabled={items.length === 1}>{t("remove")}</button>
-                  </td>
-                </tr>
-              ))}
+              {items.map((item, idx) => {
+                console.log('[RENDER] Item', idx, item);
+                return (
+                  <tr key={idx}>
+                    <td className="p-2 border">
+                      <input type="text" name="name" value={item.name} onChange={e => handleItemChange(idx, e)} className="border rounded px-2 py-1 w-full" required />
+                    </td>
+                    <td className="p-2 border">
+                      <input type="number" name="qty" value={item.qty} min={1} onChange={e => handleItemChange(idx, e)} className="border rounded px-2 py-1 w-20" required />
+                    </td>
+                    <td className="p-2 border">
+                      <input type="number" name="unitPrice" value={item.unitPrice} min={0} step={0.01} onChange={e => handleItemChange(idx, e)} className="border rounded px-2 py-1 w-24" required />
+                    </td>
+                    <td className="p-2 border">
+                      <input type="number" name="vat" value={item.vat} min={0} max={100} step={0.01} onChange={e => handleItemChange(idx, e)} className="border rounded px-2 py-1 w-20" required />
+                    </td>
+                    <td className="p-2 border text-center">
+                      <button type="button" onClick={() => removeItem(idx)} className="text-red-600 hover:underline disabled:opacity-50" disabled={items.length === 1}>{t("remove")}</button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           <button type="button" onClick={addItem} className="bg-green-600 text-white px-4 py-2 rounded font-semibold hover:bg-green-700 transition">{t("addItem")}</button>

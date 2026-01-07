@@ -1,8 +1,7 @@
-import "../globals.css";
 "use client";
+import "../globals.css";
 import { useState, useEffect } from "react";
 import { useTranslations } from "../../lib/useTranslations";
-import { useLanguage } from "../../contexts/LanguageContext";
 
 type Document = {
   id: string;
@@ -36,16 +35,20 @@ type Pair = {
 };
 
 export default function Validate() {
-  const { lang } = useLanguage();
   const t = useTranslations();
   const [orders, setOrders] = useState<Document[]>([]);
   const [invoices, setInvoices] = useState<Document[]>([]);
   const [selectedOrderId, setSelectedOrderId] = useState<string>("");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>("");
-  const [loading, setLoading] = useState(false);
   const [validating, setValidating] = useState(false);
   const [validationPair, setValidationPair] = useState<Pair | null>(null);
-  const [totals, setTotals] = useState<{ order: any; invoice: any } | null>(null);
+  type Totals = {
+    subtotal: number;
+    vatTotal: number;
+    grandTotal: number;
+  };
+  
+    const [totals, setTotals] = useState<{ order: Totals; invoice: Totals } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -95,6 +98,7 @@ export default function Validate() {
       } else {
         setError(data.error || t("error"));
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       setError(err.message || t("error"));
     } finally {

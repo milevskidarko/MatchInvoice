@@ -14,9 +14,6 @@ export interface ExtractedInvoiceData {
   }>;
 }
 
-/**
- * Extract text from image using OCR
- */
 export async function extractTextFromImage(
   file: File,
   onProgress?: (progress: number) => void
@@ -32,9 +29,6 @@ export async function extractTextFromImage(
   return data.text;
 }
 
-/**
- * Parse invoice data from OCR text
- */
 export function parseInvoiceData(text: string): ExtractedInvoiceData {
   const result: ExtractedInvoiceData = {};
   const lines = text
@@ -42,11 +36,11 @@ export function parseInvoiceData(text: string): ExtractedInvoiceData {
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
 
-  // Extract invoice number (look for patterns like "Invoice #123", "Faktura br. 123", etc.)
+  // Extract invoice number
   const invoiceNumberPatterns = [
-    /(?:invoice|faktura|фактура)[\s#:]*([A-Z0-9\-]+)/i,
-    /(?:broj|број|number)[\s:]*([A-Z0-9\-]+)/i,
-    /#[\s]*([A-Z0-9\-]+)/i,
+    /(?:invoice|faktura|фактура)[\s#:]*([A-Z0-9\-\/]+)/i,
+    /(?:broj|број|number)[\s:]*([A-Z0-9\-\/]+)/i,
+    /#[\s]*([A-Z0-9\-\/]+)/i,
   ];
   for (const pattern of invoiceNumberPatterns) {
     const match = text.match(pattern);
@@ -56,7 +50,7 @@ export function parseInvoiceData(text: string): ExtractedInvoiceData {
     }
   }
 
-  // Extract dates (look for date patterns)
+  // Extract dates
   const datePatterns = [
     /(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})/g,
     /(\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2})/g,
@@ -70,37 +64,17 @@ export function parseInvoiceData(text: string): ExtractedInvoiceData {
       }
     }
   }
-
-  // Try to identify invoice date and due date
   if (dates.length > 0) {
-    // First date is usually invoice date
     result.invoiceDate = normalizeDate(dates[0]);
     if (dates.length > 1) {
-      // Look for "due date" or "dospelost" patterns
-      const dueDatePatterns = [
-        /(?:due|dospelost|достасување|due date)[\s:]*(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})/i,
-        /(?:плаќање|payment)[\s:]*(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})/i,
-      ];
-      let foundDueDate = false;
-      for (const pattern of dueDatePatterns) {
-        const match = text.match(pattern);
-        if (match && match[1]) {
-          result.dueDate = normalizeDate(match[1]);
-          foundDueDate = true;
-          break;
-        }
-      }
-      if (!foundDueDate && dates.length >= 2) {
-        result.dueDate = normalizeDate(dates[1]);
-      }
+      result.dueDate = normalizeDate(dates[1]);
     }
   }
 
-  // Extract supplier (look for company name patterns, usually at the top)
+  // Extract supplier
   const supplierPatterns = [
     /(?:supplier|dodavuvac|добавувач|from|од)[\s:]*([A-ZА-Я][A-ZА-Яa-zа-я\s&]+)/i,
   ];
-  // Try to get company name from first few lines
   const firstLines = lines.slice(0, 5).join(" ");
   for (const pattern of supplierPatterns) {
     const match = firstLines.match(pattern);
@@ -109,7 +83,6 @@ export function parseInvoiceData(text: string): ExtractedInvoiceData {
       break;
     }
   }
-  // If no supplier found, try first non-empty line (often company name)
   if (!result.supplier && lines.length > 0) {
     const firstLine = lines[0];
     if (firstLine.length > 3 && !firstLine.match(/^\d/)) {
@@ -136,9 +109,7 @@ export function parseInvoiceData(text: string): ExtractedInvoiceData {
     }
   }
 
-  const items: ExtractedInvoiceData["items"] = [];
-
-  // Try to extract global VAT percent from summary lines (e.g. "ДДВ 18%")
+  // Extract global VAT
   let globalVat: number | undefined = undefined;
   for (const line of lines) {
     const vatMatch = line.match(/ДДВ\s*([0-9]{1,2}(?:[\.,][0-9]+)?)%/i);
@@ -148,130 +119,107 @@ export function parseInvoiceData(text: string): ExtractedInvoiceData {
     }
   }
 
+  // Extract items (robust, works with OCR noise)
+  const items: ExtractedInvoiceData["items"] = [];
   for (const line of lines) {
-    // Skip summary/total lines
     if (/вкупно|total|основа|ДДВ|наплата|за\s+плаќање|основица|итог|sum|subtotal|grand/i.test(line)) continue;
-
-    // Extract all numbers from the line (qty, price, amount)
-    // Example: "01 Производ 1 2 100,00 200,00 ден" -> [1, 2, 100.00, 200.00]
+    // Match lines like: 01 Производ 1 2 100,00 ден 200,00 ден
+    const itemMatch = line.match(/^\s*\d+\s+([A-Za-zА-Яа-я0-9\s]+)\s+(\d+)\s+([\d\.]+,[\d]{2})\s*ден\s+([\d\.]+,[\d]{2})\s*ден/i);
+    if (itemMatch) {
+      const name = itemMatch[1].trim();
+      const qty = parseInt(itemMatch[2]);
+      const unitPrice = parseFloat(itemMatch[3].replace(/\./g, '').replace(',', '.'));
+      // const amount = parseFloat(itemMatch[4].replace(/\./g, '').replace(',', '.'));
+      const vat = globalVat !== undefined ? globalVat : 18;
+      items.push({
+        name,
+        qty: isNaN(qty) ? 1 : qty,
+        unitPrice: isNaN(unitPrice) ? 0 : unitPrice,
+        vat,
+      });
+      continue;
+    }
+    // fallback: old logic for other lines
     const numbers = Array.from(line.matchAll(/([\d\.]+,[\d]{2}|[\d]+,[\d]{2}|[\d]+)/g)).map(m => m[1].replace(/\./g, '').replace(',', '.'));
     const parsedNumbers = numbers.map(n => parseFloat(n)).filter(n => !isNaN(n));
     if (parsedNumbers.length >= 3) {
-      // Try to find qty, unitPrice, amount by checking multiplication
-      // Assume: qty is integer, unitPrice and amount are decimals
-      let qty = 1, unitPrice = 0, amount = 0;
+      let bestMatch = {qty: 1, unitPrice: 0, amount: 0, diff: Number.POSITIVE_INFINITY};
       for (let i = 0; i < parsedNumbers.length - 1; i++) {
         for (let j = i + 1; j < parsedNumbers.length; j++) {
           const a = parsedNumbers[i];
           const b = parsedNumbers[j];
-          const c = parsedNumbers.find(x => Math.abs(x - a * b) < 1);
+          const c = parsedNumbers.find(x => Math.abs(x - a * b) < 2);
           if (Number.isInteger(a) && !Number.isInteger(b) && c !== undefined) {
-            qty = a;
-            unitPrice = b;
-            amount = c;
-            break;
+            const diff = Math.abs(c - a * b);
+            if (diff < bestMatch.diff) {
+              bestMatch = {qty: a, unitPrice: b, amount: c, diff};
+            }
           }
           if (Number.isInteger(b) && !Number.isInteger(a) && c !== undefined) {
-            qty = b;
-            unitPrice = a;
-            amount = c;
-            break;
+            const diff = Math.abs(c - a * b);
+            if (diff < bestMatch.diff) {
+              bestMatch = {qty: b, unitPrice: a, amount: c, diff};
+            }
           }
         }
       }
-      // Extract name (everything before qty)
-      const qtyStr = String(qty);
+      const qtyStr = String(bestMatch.qty);
       let name = line.split(qtyStr)[0].replace(/^\s*\d+\s+/, '').trim();
       name = name.replace(/\s*\d+$/, '').trim();
       const vat = globalVat !== undefined ? globalVat : 18;
-      if (name && unitPrice > 0) {
+      if (name && bestMatch.unitPrice > 0) {
         items.push({
           name,
-          qty,
-          unitPrice,
+          qty: bestMatch.qty,
+          unitPrice: bestMatch.unitPrice,
           vat,
         });
       }
     }
   }
-
-  // If no items found with patterns, try to find any line with numbers that might be an item
-  if (items.length === 0) {
-    for (const line of lines) {
-      // Look for lines with product-like names followed by numbers
-      const itemMatch = line.match(
-        /^([A-ZА-Я][A-ZА-Яa-zа-я\s]{3,}?)\s+.*?(\d+\.?\d*)\s+.*?(\d+\.?\d*)/
-      );
-      if (itemMatch && itemMatch[1] && itemMatch[2] && itemMatch[3]) {
-        const name = itemMatch[1].trim();
-        if (name.length > 3 && !name.toLowerCase().includes("total")) {
-          items.push({
-            name,
-            qty: parseFloat(itemMatch[2]) || 1,
-            unitPrice: parseFloat(itemMatch[3]) || 0,
-            vat: 18,
-          });
-        }
-      }
-    }
-  }
-
   if (items.length > 0) {
-    result.items = items.slice(0, 20); // Limit to 20 items
+    result.items = items.slice(0, 20);
   }
-
   return result;
 }
 
-/**
- * Normalize date format to YYYY-MM-DD
- */
 function normalizeDate(dateStr: string): string {
-  // Try different date formats
   const formats = [
-    /(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})/, // DD.MM.YYYY or DD-MM-YYYY
-    /(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})/, // YYYY-MM-DD
-    /(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2})/, // DD.MM.YY
+    /(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})/,
+    /(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})/,
+    /(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2})/,
   ];
-
   for (const format of formats) {
     const match = dateStr.match(format);
     if (match) {
       let day: string, month: string, year: string;
-
       if (match[3].length === 4) {
-        // YYYY-MM-DD format
         if (dateStr.includes(match[3]) && parseInt(match[3]) > 31) {
           year = match[3];
           month = match[2].padStart(2, "0");
           day = match[1].padStart(2, "0");
         } else {
-          // DD-MM-YYYY format
           day = match[1].padStart(2, "0");
           month = match[2].padStart(2, "0");
           year = match[3];
         }
       } else {
-        // DD-MM-YY format
         day = match[1].padStart(2, "0");
         month = match[2].padStart(2, "0");
         year = "20" + match[3];
       }
-
       return `${year}-${month}-${day}`;
     }
   }
-
-  return dateStr; // Return as-is if can't parse
+  return dateStr;
 }
 
-/**
- * Extract invoice data from image file
- */
 export async function extractInvoiceData(
   file: File,
   onProgress?: (progress: number) => void
 ): Promise<ExtractedInvoiceData> {
   const text = await extractTextFromImage(file, onProgress);
+  // Debug: log raw OCR text for analysis
+  console.log("[OCR RAW TEXT]", text);
   return parseInvoiceData(text);
 }

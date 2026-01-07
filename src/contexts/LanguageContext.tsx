@@ -18,6 +18,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const savedLang = localStorage.getItem("invoiceguard-lang") as Lang | null;
     if (savedLang && (savedLang === "mk" || savedLang === "en")) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLangState(savedLang);
     }
     setMounted(true);

@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import { extractInvoiceData, ExtractedInvoiceData } from "../lib/ocr";
+import { extractInvoiceData, ExtractedInvoiceData } from "../lib/ocr.smart";
 
 export function FileUpload({ 
   onUpload, 
@@ -31,41 +31,46 @@ export function FileUpload({
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
     // Cleanup previous preview
     if (preview?.url) {
       URL.revokeObjectURL(preview.url);
     }
-    
+
     // Create preview
     const fileType = file.type;
     const previewUrl = URL.createObjectURL(file);
     setPreview({ url: previewUrl, type: fileType, name: file.name });
-    
+
     setUploading(true);
     setError(null);
-    
+
     try {
-      // Try OCR extraction if it's an image and callback is provided
-      if (onOCRData && fileType.startsWith('image/')) {
+      // OCR extraction for both images and PDFs (via API)
+      if (onOCRData && (fileType.startsWith('image/') || fileType === 'application/pdf')) {
         setExtractingOCR(true);
         setOcrProgress(0);
         try {
-          const ocrData = await extractInvoiceData(file, (progress) => {
-            setOcrProgress(progress);
+          const formData = new FormData();
+          formData.append('file', file);
+          const res = await fetch('/api/ocr', {
+            method: 'POST',
+            body: formData,
           });
-          if (ocrData && Object.keys(ocrData).length > 0) {
-            onOCRData(ocrData);
+          const data = await res.json();
+          if (data.success && data.data && Object.keys(data.data).length > 0) {
+            onOCRData(data.data);
+          } else if (data.error) {
+            setError(data.error);
           }
         } catch (ocrError: unknown) {
           console.warn('OCR extraction failed:', ocrError);
-          // Don't fail the upload if OCR fails
         } finally {
           setExtractingOCR(false);
           setOcrProgress(0);
         }
       }
-      
+
       if (!supabase) {
         throw new Error('Supabase is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in your .env.local file.');
       }
